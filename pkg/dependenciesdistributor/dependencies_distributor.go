@@ -33,6 +33,7 @@ import (
 	"github.com/karmada-io/karmada/pkg/util/helper"
 	"github.com/karmada-io/karmada/pkg/util/informermanager"
 	"github.com/karmada-io/karmada/pkg/util/informermanager/keys"
+	"github.com/karmada-io/karmada/pkg/util/lifted"
 	"github.com/karmada-io/karmada/pkg/util/names"
 )
 
@@ -48,6 +49,7 @@ const (
 var supportedTypes = []schema.GroupVersionResource{
 	corev1.SchemeGroupVersion.WithResource("configmaps"),
 	corev1.SchemeGroupVersion.WithResource("secrets"),
+	corev1.SchemeGroupVersion.WithResource("services"),
 }
 
 // DependenciesDistributor is to automatically propagate relevant resources.
@@ -186,9 +188,21 @@ func (d *DependenciesDistributor) Reconcile(key util.QueueKey) error {
 			klog.Errorf("failed to evaluate if binding(%s/%s) need to sync dependencies: %v", binding.Namespace, binding.Name, err)
 			errs = append(errs, err)
 			continue
-		} else if !matched {
-			klog.V(4).Infof("no need to sync binding(%s/%s)", binding.Namespace, binding.Name)
-			continue
+		}
+		if !matched {
+			if clusterWideKey.Kind != util.ServiceKind {
+				klog.V(4).Infof("no need to sync binding(%s/%s)", binding.Namespace, binding.Name)
+				continue
+			}
+			labelMatched, err := d.serviceLabelMatches(clusterWideKey, binding)
+			if err != nil {
+				klog.Errorf("failed to evaluate if binding(%s/%s) need to sync service dependencies: %v", binding.Namespace, binding.Name, err)
+				errs = append(errs, err)
+				continue
+			} else if !labelMatched {
+				klog.V(4).Infof("no need to sync binding(%s/%s)", binding.Namespace, binding.Name)
+				continue
+			}
 		}
 
 		klog.V(4).Infof("resource binding(%s/%s) is matched for resource(%s/%s)", binding.Namespace, binding.Name, clusterWideKey.Namespace, clusterWideKey.Name)
@@ -230,7 +244,6 @@ func dependentObjectReferenceMatches(objectKey keys.ClusterWideKey, referenceBin
 			return true, nil
 		}
 	}
-
 	return false, nil
 }
 
@@ -343,7 +356,7 @@ func (d *DependenciesDistributor) ReconcileResourceBinding(key util.QueueKey) er
 		return nil
 	}
 
-	dependencies, err := d.ResourceInterpreter.GetDependencies(workload)
+	dependencies, err := d.ResourceInterpreter.GetDependencies(d.Client, workload)
 	if err != nil {
 		klog.Errorf("Failed to customize dependencies for %s(%s), %v", workload.GroupVersionKind(), workload.GetName(), err)
 		return err
@@ -644,4 +657,81 @@ func deleteBindingFromSnapshot(bindingNamespace, bindingName string, existSnapsh
 		}
 	}
 	return existSnapshot
+}
+
+func (d *DependenciesDistributor) serviceLabelMatches(objectKey keys.ClusterWideKey, referenceBinding *workv1alpha2.ResourceBinding) (bool, error) {
+	service := &corev1.Service{}
+	err := d.Client.Get(context.TODO(), client.ObjectKey{Namespace: objectKey.Namespace, Name: objectKey.Name}, service)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	workload, err := helper.FetchWorkload(d.DynamicClient, d.InformerManager, d.RESTMapper, referenceBinding.Spec.Resource)
+	if err != nil {
+		klog.Errorf("Failed to fetch workload for resourceBinding(%s/%s). Error: %v.", referenceBinding.Namespace, referenceBinding.Name, err)
+		return false, err
+	}
+
+	podObj, err := getPodSpecFromTemplate(workload)
+	if err != nil {
+		return false, err
+	} else if podObj == nil {
+		return false, nil
+	}
+
+	if service.Spec.Selector == nil {
+		// if the service has a nil selector this means selectors match nothing, not everything.
+		return false, nil
+	}
+
+	if labels.SelectorFromSet(service.Spec.Selector).Matches(labels.Set(podObj.Labels)) {
+		return true, nil
+	}
+	return false, nil
+}
+
+func getPodSpecFromTemplate(workload *unstructured.Unstructured) (*corev1.Pod, error) {
+	switch workload.GetKind() {
+	case util.PodKind:
+		podObj, err := helper.ConvertToPod(workload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert Pod from unstructured object: %v", err)
+		}
+		return podObj.DeepCopy(), nil
+	case util.ReplicaSetKind:
+		replicaSetObj, err := helper.ConvertToReplicaSet(workload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert ReplicaSet from unstructured object: %v", err)
+		}
+		return lifted.GetPodFromTemplate(&replicaSetObj.Spec.Template, replicaSetObj, nil)
+	case util.DeploymentKind:
+		deploymentObj, err := helper.ConvertToDeployment(workload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert Deployment from unstructured object: %v", err)
+		}
+		return lifted.GetPodFromTemplate(&deploymentObj.Spec.Template, deploymentObj, nil)
+	case util.DaemonSetKind:
+		daemonSetObj, err := helper.ConvertToDaemonSet(workload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert DaemonSet from unstructured object: %v", err)
+		}
+		return lifted.GetPodFromTemplate(&daemonSetObj.Spec.Template, daemonSetObj, nil)
+	case util.StatefulSetKind:
+		statefulSetObj, err := helper.ConvertToStatefulSet(workload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert StatefulSet from unstructured object: %v", err)
+		}
+		return lifted.GetPodFromTemplate(&statefulSetObj.Spec.Template, statefulSetObj, nil)
+	case util.JobKind:
+		jobObj, err := helper.ConvertToJob(workload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert Job from unstructured object: %v", err)
+		}
+		return lifted.GetPodFromTemplate(&jobObj.Spec.Template, jobObj, nil)
+	}
+
+	return nil, nil
 }
