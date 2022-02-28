@@ -6,6 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
@@ -99,10 +100,10 @@ func (e *DefaultInterpreter) AggregateStatus(object *unstructured.Unstructured, 
 }
 
 // GetDependencies returns the dependent resources of the given object.
-func (e *DefaultInterpreter) GetDependencies(object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, err error) {
+func (e *DefaultInterpreter) GetDependencies(cl client.Client, object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, err error) {
 	handler, exist := e.dependenciesHandlers[object.GroupVersionKind()]
 	if !exist {
 		return dependencies, fmt.Errorf("defalut interpreter for operation %s not found", configv1alpha1.InterpreterOperationInterpretDependency)
 	}
-	return handler(object)
+	return handler(cl, object)
 }

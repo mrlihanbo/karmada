@@ -6,6 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
@@ -36,7 +37,7 @@ type ResourceInterpreter interface {
 	AggregateStatus(object *unstructured.Unstructured, aggregatedStatusItems []workv1alpha2.AggregatedStatusItem) (*unstructured.Unstructured, error)
 
 	// GetDependencies returns the dependent resources of the given object.
-	GetDependencies(object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, err error)
+	GetDependencies(cl client.Client, object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, err error)
 	// other common method
 }
 
@@ -157,7 +158,7 @@ func (i *customResourceInterpreterImpl) AggregateStatus(object *unstructured.Uns
 }
 
 // GetDependencies returns the dependent resources of the given object.
-func (i *customResourceInterpreterImpl) GetDependencies(object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, err error) {
+func (i *customResourceInterpreterImpl) GetDependencies(cl client.Client, object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, err error) {
 	klog.V(4).Infof("Begin to get dependencies for object: %v %s/%s.", object.GroupVersionKind(), object.GetNamespace(), object.GetName())
 
 	dependencies, hookEnabled, err := i.customizedInterpreter.GetDependencies(context.TODO(), &webhook.RequestAttributes{
@@ -171,6 +172,6 @@ func (i *customResourceInterpreterImpl) GetDependencies(object *unstructured.Uns
 		return
 	}
 
-	dependencies, err = i.defaultInterpreter.GetDependencies(object)
+	dependencies, err = i.defaultInterpreter.GetDependencies(cl, object)
 	return
 }
