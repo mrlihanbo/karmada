@@ -73,6 +73,11 @@ type ClusterSpec struct {
 	// +optional
 	ProxyURL string `json:"proxyURL,omitempty"`
 
+	// ProxyConnectHeader optionally specifies headers to send to
+	// proxies configured in ProxyURL.
+	// +optional
+	ProxyConnectHeader map[string]string `json:"proxyConnectHeader,omitempty"`
+
 	// Provider represents the cloud provider name of the member cluster.
 	// +optional
 	Provider string `json:"provider,omitempty"`

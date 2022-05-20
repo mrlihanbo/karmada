@@ -682,6 +682,22 @@ func schema_pkg_apis_cluster_v1alpha1_ClusterSpec(ref common.ReferenceCallback) 
 							Format:      "",
 						},
 					},
+					"proxyConnectHeader": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ProxyConnectHeader optionally specifies headers to send to proxies configured in ProxyURL.",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
+						},
+					},
 					"provider": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Provider represents the cloud provider name of the member cluster.",

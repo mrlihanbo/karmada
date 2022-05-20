@@ -61,6 +61,11 @@ type ClusterSpec struct {
 	// +optional
 	ProxyURL string
 
+	// ProxyConnectHeader optionally specifies headers to send to
+	// proxies configured in ProxyURL.
+	// +optional
+	ProxyConnectHeader map[string]string
+
 	// Provider represents the cloud provider name of the member cluster.
 	// +optional
 	Provider string
