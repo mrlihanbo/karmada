@@ -6,6 +6,13 @@ import (
 	"io"
 	"strings"
 
+	clusterv1alpha1 "github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1"
+	"github.com/karmada-io/karmada/pkg/apis/cluster/validation"
+	karmadaclientset "github.com/karmada-io/karmada/pkg/generated/clientset/versioned"
+	"github.com/karmada-io/karmada/pkg/karmadactl/options"
+	"github.com/karmada-io/karmada/pkg/util"
+	"github.com/karmada-io/karmada/pkg/util/names"
+	"github.com/karmada-io/karmada/pkg/util/proxy"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
@@ -15,13 +22,6 @@ import (
 	kubeclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
-
-	clusterv1alpha1 "github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1"
-	"github.com/karmada-io/karmada/pkg/apis/cluster/validation"
-	karmadaclientset "github.com/karmada-io/karmada/pkg/generated/clientset/versioned"
-	"github.com/karmada-io/karmada/pkg/karmadactl/options"
-	"github.com/karmada-io/karmada/pkg/util"
-	"github.com/karmada-io/karmada/pkg/util/names"
 )
 
 var (
@@ -104,6 +104,9 @@ type CommandJoinOption struct {
 
 	// ClusterProvider is the cluster's provider.
 	ClusterProvider string
+
+	// ProxyConnectHeader optionally specifies headers to send to proxies
+	ProxyConnectHeader map[string]string
 }
 
 // Complete ensures that options are valid and marshals them if necessary.
@@ -142,6 +145,7 @@ func (j *CommandJoinOption) AddFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&j.ClusterKubeConfig, "cluster-kubeconfig", "",
 		"Path of the cluster's kubeconfig.")
 	flags.StringVar(&j.ClusterProvider, "cluster-provider", "", "Provider of the joining cluster.")
+	flags.StringToStringVar(&j.ProxyConnectHeader, "proxy-header", j.ProxyConnectHeader, "ProxyConnectHeader optionally specifies headers to send to proxies. Supported formats are: key1=value1,key2=value2, value3")
 }
 
 // RunJoin is the implementation of the 'join' command.
@@ -167,6 +171,10 @@ func RunJoin(cmdOut io.Writer, karmadaConfig KarmadaConfig, opts CommandJoinOpti
 
 // JoinCluster join the cluster into karmada.
 func JoinCluster(controlPlaneRestConfig, clusterConfig *rest.Config, opts CommandJoinOption) (err error) {
+	if len(opts.ProxyConnectHeader) != 0 {
+		clusterConfig.WrapTransport = proxy.NewProxyHeaderRoundTripperWrapperConstructor(clusterConfig.WrapTransport, opts.ProxyConnectHeader)
+	}
+
 	controlPlaneKubeClient := kubeclient.NewForConfigOrDie(controlPlaneRestConfig)
 	clusterKubeClient := kubeclient.NewForConfigOrDie(clusterConfig)
 
@@ -342,6 +350,10 @@ func generateClusterInControllerPlane(controlPlaneConfig, clusterConfig *rest.Co
 			return nil, fmt.Errorf("clusterConfig.Proxy error, %v", err)
 		}
 		clusterObj.Spec.ProxyURL = url.String()
+	}
+
+	if len(opts.ProxyConnectHeader) != 0 {
+		clusterObj.Spec.ProxyConnectHeader = opts.ProxyConnectHeader
 	}
 
 	controlPlaneKarmadaClient := karmadaclientset.NewForConfigOrDie(controlPlaneConfig)
