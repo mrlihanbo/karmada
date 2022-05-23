@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/karmada-io/karmada/pkg/util/proxy"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -90,6 +91,9 @@ type CommandUnjoinOption struct {
 
 	// Wait tells maximum command execution time
 	Wait time.Duration
+
+	// ProxyConnectHeader optionally specifies headers to send to proxies
+	ProxyConnectHeader map[string]string
 }
 
 // Complete ensures that options are valid and marshals them if necessary.
@@ -129,6 +133,7 @@ func (j *CommandUnjoinOption) AddFlags(flags *pflag.FlagSet) {
 		"Delete cluster and secret resources even if resources in the cluster targeted for unjoin are not removed successfully.")
 
 	flags.DurationVar(&j.Wait, "wait", 60*time.Second, "wait for the unjoin command execution process(default 60s), if there is no success after this time, timeout will be returned.")
+	flags.StringToStringVar(&j.ProxyConnectHeader, "proxy-header", j.ProxyConnectHeader, "ProxyConnectHeader optionally specifies headers to send to proxies. Supported formats are: key1=value1,key2=value2, value3")
 }
 
 // RunUnjoin is the implementation of the 'unjoin' command.
@@ -171,6 +176,10 @@ func UnJoinCluster(controlPlaneRestConfig, clusterConfig *rest.Config, opts Comm
 	// Attempt to delete the cluster role, cluster rolebindings and service account from the unjoining cluster
 	// if user provides the kubeconfig of cluster
 	if clusterConfig != nil {
+		if len(opts.ProxyConnectHeader) != 0 {
+			clusterConfig.WrapTransport = proxy.NewProxyHeaderRoundTripperWrapperConstructor(clusterConfig.WrapTransport, opts.ProxyConnectHeader)
+		}
+
 		clusterKubeClient := kubeclient.NewForConfigOrDie(clusterConfig)
 
 		klog.V(1).Infof("unjoining cluster config. endpoint: %s", clusterConfig.Host)
