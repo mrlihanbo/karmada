@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/karmada-io/karmada/pkg/util/proxy"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
@@ -158,6 +159,10 @@ func buildClusterConfig(clusterName string, client client.Client) (*rest.Config,
 			return nil, err
 		}
 		clusterConfig.Proxy = http.ProxyURL(proxy)
+	}
+
+	if len(cluster.Spec.ProxyConnectHeader) != 0 {
+		clusterConfig.WrapTransport = proxy.NewProxyHeaderRoundTripperWrapperConstructor(clusterConfig.WrapTransport, cluster.Spec.ProxyConnectHeader)
 	}
 
 	return clusterConfig, nil
