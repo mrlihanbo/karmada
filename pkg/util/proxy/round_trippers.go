@@ -8,10 +8,11 @@ import (
 )
 
 type ProxyHeaderRoundTripper struct {
-	proxyHeaders  http.Header
+	proxyHeaders http.Header
 	roundTripper http.RoundTripper
 }
 
+// NewProxyHeaderRoundTripperWrapperConstructor returns a RoundTripper wrapper that's usable within restConfig.WrapTransport.
 func NewProxyHeaderRoundTripperWrapperConstructor(wt transport.WrapperFunc, headers map[string]string) transport.WrapperFunc {
 	return func(rt http.RoundTripper) http.RoundTripper {
 		if wt != nil {
@@ -24,6 +25,7 @@ func NewProxyHeaderRoundTripperWrapperConstructor(wt transport.WrapperFunc, head
 	}
 }
 
+// RoundTrip implements the http.RoundTripper interface
 func (r *ProxyHeaderRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if tr, ok := r.roundTripper.(*http.Transport); ok {
 		tr.ProxyConnectHeader = r.proxyHeaders
@@ -32,6 +34,7 @@ func (r *ProxyHeaderRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	return r.roundTripper.RoundTrip(req)
 }
 
+// ParseProxyHeaders will parse headers to send to proxies from given map.
 func ParseProxyHeaders(headers map[string]string) http.Header {
 	if len(headers) == 0 {
 		return nil

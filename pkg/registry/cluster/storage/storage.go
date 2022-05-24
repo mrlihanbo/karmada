@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/karmada-io/karmada/pkg/util/proxy"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -140,6 +141,9 @@ func createProxyTransport(cluster *clusterapis.Cluster) (*http.Transport, error)
 			return nil, fmt.Errorf("failed to parse url of proxy url %s: %v", cluster.Spec.ProxyURL, err)
 		}
 		trans.Proxy = http.ProxyURL(proxy)
+	}
+	if len(cluster.Spec.ProxyConnectHeader) != 0 {
+		trans.ProxyConnectHeader = proxy.ParseProxyHeaders(cluster.Spec.ProxyConnectHeader)
 	}
 	return trans, nil
 }
